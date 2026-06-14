@@ -1,6 +1,7 @@
 package tsproxy
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net"
@@ -25,7 +26,7 @@ func (t *TsProxy) baseSOCKSConfig(bind string) *socks5.Server {
 	return server
 }
 
-func (t *TsProxy) ServeSOCKS(bind, tcp4, tcp6, udp4, udp6 string) {
+func (t *TsProxy) ServeSOCKS(ctx context.Context, bind, tcp4, tcp6, udp4, udp6 string) {
 	server := t.baseSOCKSConfig(bind)
 	//NOTE: in the socks5 lib, the second argument is always ""
 	server.DialTCP = func(network string, _, raddr string) (net.Conn, error) {
@@ -77,10 +78,14 @@ func (t *TsProxy) ServeSOCKS(bind, tcp4, tcp6, udp4, udp6 string) {
 		}
 	}
 
+	go func() {
+		<-ctx.Done()
+		server.RunnerGroup.Done()
+	}()
 	server.ListenAndServe(nil)
 }
 
-func (t *TsProxy) ForwardSOCKS(bind, connect string) {
+func (t *TsProxy) ForwardSOCKS(ctx context.Context, bind, connect string) {
 	server := t.baseSOCKSConfig(bind)
 	connect = resolveTshost(t.tsServer, t.tsServer.Hostname, connect)
 	client, _ := socks5.NewClient(connect, "", "", t.tcpTimeout, t.udpTimeout)
@@ -111,10 +116,14 @@ func (t *TsProxy) ForwardSOCKS(bind, connect string) {
 		uc := proxyUDPConn{UDPConn: c}
 		return uc, err
 	}
+	go func() {
+		<-ctx.Done()
+		server.RunnerGroup.Done()
+	}()
 	server.ListenAndServe(nil)
 }
 
-func (t *TsProxy) TailnetSOCKS(bind string) {
+func (t *TsProxy) TailnetSOCKS(ctx context.Context, bind string) {
 	server := t.baseSOCKSConfig(bind)
 	server.DialTCP = func(network string, _, raddr string) (net.Conn, error) {
 		return tsDial(t.tsServer, network, raddr)
@@ -122,11 +131,15 @@ func (t *TsProxy) TailnetSOCKS(bind string) {
 	server.BindOutUDP = func(network string, laddr string) (net.PacketConn, error) {
 		return t.tsServer.ListenPacket(network, laddr)
 	}
+	go func() {
+		<-ctx.Done()
+		server.RunnerGroup.Done()
+	}()
 	server.ListenAndServe(nil)
 }
 
 // Combination of ServeSOCKS and TailnetSOCKS
-func (t *TsProxy) DualSOCKS(bind, tcp4, tcp6, udp4, udp6 string) {
+func (t *TsProxy) DualSOCKS(ctx context.Context, bind, tcp4, tcp6, udp4, udp6 string) {
 	server := t.baseSOCKSConfig(bind)
 	server.DialTCP = func(network string, _, raddr string) (net.Conn, error) {
 		host, _, _ := net.SplitHostPort(raddr)
@@ -165,6 +178,10 @@ func (t *TsProxy) DualSOCKS(bind, tcp4, tcp6, udp4, udp6 string) {
 		return &delayedUDPConn{connOpener: co}, nil
 	}
 
+	go func() {
+		<-ctx.Done()
+		server.RunnerGroup.Done()
+	}()
 	server.ListenAndServe(nil)
 }
 

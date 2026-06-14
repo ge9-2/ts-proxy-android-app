@@ -1,6 +1,7 @@
 package tsproxy
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -8,7 +9,7 @@ import (
 	"time"
 )
 
-func (t *TsProxy) ForwardTCP(bind, connect string, useTLS bool) error {
+func (t *TsProxy) ForwardTCP(ctx context.Context, bind, connect string, useTLS bool) error {
 	var ln net.Listener
 	var err error
 	bind = resolveTshost(t.tsServer, t.tsServer.Hostname, bind)
@@ -23,10 +24,18 @@ func (t *TsProxy) ForwardTCP(bind, connect string, useTLS bool) error {
 		return err
 	}
 
+	go func() {
+		<-ctx.Done()
+		ln.Close()
+	}()
+
 	defer ln.Close()
 	for {
 		src, err := ln.Accept()
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			log.Printf("[TCP] Accept Error:%v", err)
 			return err
 		}
@@ -55,13 +64,19 @@ type udpSession struct {
 }
 
 // Basically AI-generated
-func (t *TsProxy) ForwardUDP(bind, connect string) error {
+func (t *TsProxy) ForwardUDP(ctx context.Context, bind, connect string) error {
 	bind = resolveTshost(t.tsServer, t.tsServer.Hostname, bind)
 	connect = resolveTshost(t.tsServer, t.tsServer.Hostname, connect)
 	pc, err := listenUDP(t.tsServer, bind)
 	if err != nil {
 		return err
 	}
+
+	go func() {
+		<-ctx.Done()
+		pc.Close()
+	}()
+
 	go func() {
 		defer pc.Close()
 
@@ -76,6 +91,9 @@ func (t *TsProxy) ForwardUDP(bind, connect string) error {
 			// 1. パケット受信
 			n, clientAddr, err := pc.ReadFrom(buf)
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				log.Printf("[UDP] Read error: %v", err)
 				return
 			}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -81,7 +82,10 @@ func main() {
 	}
 	defer tsServer.Close()
 
-	tsproxy := tsproxy.NewTsProxy(tsServer, tcpTimeout, udpTimeout, debug)
+	tsproxy, err := tsproxy.NewTsProxy(context.Background(), tsServer, tcpTimeout, udpTimeout, debug)
+	if err != nil {
+		log.Fatalf("Failed to start ts-proxy: %v", err)
+	}
 
 	// --- TCP Forwarding ---
 	for _, raw := range tcpRulesRaw {
@@ -96,7 +100,7 @@ func main() {
 		} else {
 			useTLS = true
 		}
-		go tsproxy.ForwardTCP(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), useTLS)
+		go tsproxy.ForwardTCP(context.Background(), strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), useTLS)
 	}
 
 	for _, raw := range udpRulesRaw {
@@ -105,7 +109,7 @@ func main() {
 			log.Printf("Invalid UDP rule format: %s", raw)
 			continue
 		}
-		go tsproxy.ForwardUDP(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+		go tsproxy.ForwardUDP(context.Background(), strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 	}
 
 	for _, raw := range fSocksRaw {
@@ -114,11 +118,11 @@ func main() {
 			log.Printf("Invalid Forward SOCKS format: %s", raw)
 			continue
 		}
-		go tsproxy.ForwardSOCKS(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+		go tsproxy.ForwardSOCKS(context.Background(), strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 	}
 
 	for _, raw := range tSocksRaw {
-		go tsproxy.TailnetSOCKS(strings.TrimSpace(raw))
+		go tsproxy.TailnetSOCKS(context.Background(), strings.TrimSpace(raw))
 	}
 
 	get_outaddr_config := func(c []string) (string, string, string, string) {
@@ -159,7 +163,7 @@ func main() {
 			continue
 		}
 		tcp4, tcp6, udp4, udp6 := get_outaddr_config(parts[1:])
-		go tsproxy.DualSOCKS(strings.TrimSpace(raw), tcp4+":0", tcp6+":0", udp4+":0", udp6+":0")
+		go tsproxy.DualSOCKS(context.Background(), strings.TrimSpace(parts[0]), tcp4+":0", tcp6+":0", udp4+":0", udp6+":0")
 	}
 	for _, raw := range sSocksRaw {
 		parts := strings.Split(raw, ",")
@@ -167,7 +171,7 @@ func main() {
 			continue
 		}
 		tcp4, tcp6, udp4, udp6 := get_outaddr_config(parts[1:])
-		go tsproxy.ServeSOCKS(strings.TrimSpace(parts[0]), tcp4+":0", tcp6+":0", udp4+":0", udp6+":0")
+		go tsproxy.ServeSOCKS(context.Background(), strings.TrimSpace(parts[0]), tcp4+":0", tcp6+":0", udp4+":0", udp6+":0")
 	}
 
 	select {}

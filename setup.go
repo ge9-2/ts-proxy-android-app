@@ -3,7 +3,6 @@ package tsproxy
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/netip"
 	"os"
@@ -27,7 +26,7 @@ type TsProxy struct {
 	debug      bool
 }
 
-func NewTsProxy(tsServer0 *tsnet.Server, tcpTimeout0, udpTimeout0 int, debug0 bool) *TsProxy {
+func NewTsProxy(ctx context.Context, tsServer0 *tsnet.Server, tcpTimeout0, udpTimeout0 int, debug0 bool) (*TsProxy, error) {
 	t := &TsProxy{
 		tcpTimeout: tcpTimeout0,
 		udpTimeout: udpTimeout0,
@@ -37,10 +36,10 @@ func NewTsProxy(tsServer0 *tsnet.Server, tcpTimeout0, udpTimeout0 int, debug0 bo
 	//NOTE: Unfortunately, socks5.Debug can only be set globally
 	socks5.Debug = debug0
 	anetPatch()
-	if _, err := t.tsServer.Up(context.Background()); err != nil {
-		log.Fatalf("Failed to start tsnet: %v", err)
+	if _, err := t.tsServer.Up(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start tsnet: %w", err)
 	}
-	return t
+	return t, nil
 }
 
 func anetPatch() {
